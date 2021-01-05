@@ -1,4 +1,5 @@
 from telegram.ext import Updater
+from DB import DB
 
 
 def load_config():
@@ -21,6 +22,9 @@ def main():
     # Bot erstellen und Token festlegen
     updater = Updater(token=config['Telegram_Bot_Token'])
     dispatcher = updater.dispatcher
+
+    # Verbindung zur Datenbank herstellen
+    db = DB('SpendingCalcData.db')
 
     # Bot starten
     updater.start_polling()
