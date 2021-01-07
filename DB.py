@@ -4,7 +4,7 @@ import sqlite3
 class DB:
     def __init__(self, db_name):
         # Verbindung zur Datenbank herstellen
-        self.conn = sqlite3.connect(db_name)
+        self.conn = sqlite3.connect(db_name, check_same_thread=False)
         self.check_new_db()
 
     def check_new_db(self):
@@ -46,5 +46,70 @@ class DB:
                     '''
                 cursor.execute(command)
                 print('New Database created!')
+        except BaseException as e:
+            raise e
+
+    def get_tags(self, chat_id):
+        """Return all the tags of a user
+
+        :param chat_id: Telegram chat_id of the user
+        :return: List of tags of the user
+        """
+        try:
+            cursor = self.conn.cursor()
+            command = '''
+                SELECT Tag
+                FROM Tags
+                WHERE ChatID = ?
+                '''
+            cursor.execute(command, (chat_id,))
+            fetch = cursor.fetchall()
+            tags = []
+            for tag in fetch:
+                tags.append(tag[0])
+            return tags
+        except BaseException as e:
+            raise e
+
+    def add_tag(self, chat_id, tag):
+        """Adds a tag to a user
+
+        :param chat_id: Telegram chat_id of the user
+        :param tag: Tag that should be added
+        """
+        try:
+            cursor = self.conn.cursor()
+            command = '''
+                INSERT INTO Tags (ChatID, Tag)
+                VALUES (?, ?)
+                '''
+            cursor.execute(command, (chat_id, tag,))
+            self.conn.commit()
+        except BaseException as e:
+            raise e
+
+    def add_entry(self, chat_id, tag, value, comment):
+        """Adds a new entry
+
+        :param chat_id: Telegram chat_id of the user
+        :param value: Value for the entry
+        :param tag: Tag for the entry
+        :param comment: Comment for the entry
+        """
+        try:
+            cursor = self.conn.cursor()
+            command = '''
+                SELECT T_ID
+                FROM Tags
+                WHERE ChatID = ? AND Tag = ?
+                '''
+            cursor.execute(command, (chat_id, tag,))
+            tag_id = cursor.fetchone()[0]
+            command = '''
+                INSERT INTO Entry (Tag, Value, Comment)
+                VALUES (?, ?, ?)
+                '''
+            cursor.execute(command, (tag_id, value, comment))
+            self.conn.commit()
         except BaseException as e:
             raise e
