@@ -2,6 +2,7 @@ from telegram.ext import Updater, Filters
 from telegram.ext import ConversationHandler, CommandHandler, MessageHandler
 from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove
 from DB import DB
+import datetime
 
 # Konstanten für Zustände festlegen
 MAIN = 0
@@ -195,6 +196,7 @@ def enter_save(update, context):
 
     value = data[chat_id]['value']
     tag = data[chat_id]['tag']
+    date = datetime.date.today()
     comment = data[chat_id]['comment']
 
     # Kommentar hinzufügen, wenn dieser nicht übersprungen wurde
@@ -202,7 +204,7 @@ def enter_save(update, context):
         comment = message.strip()
 
     # Eintrag in Datenbank schreiben
-    db.add_entry(chat_id, tag, value, comment)
+    db.add_entry(chat_id, tag, value, date, comment)
 
     # Zwischengespeicherte Daten löschen
     data.pop(chat_id, None)

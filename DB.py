@@ -40,6 +40,7 @@ class DB:
                         "E_ID" INTEGER NOT NULL,
                         "Tag" INTEGER,
                         "Value" REAL NOT NULL DEFAULT 0,
+                        "Date" TEXT,
                         "Comment" TEXT,
                         PRIMARY KEY("E_ID" AUTOINCREMENT)
                     )
@@ -88,12 +89,13 @@ class DB:
         except BaseException as e:
             raise e
 
-    def add_entry(self, chat_id, tag, value, comment):
+    def add_entry(self, chat_id, tag, value, date, comment):
         """Adds a new entry
 
         :param chat_id: Telegram chat_id of the user
         :param value: Value for the entry
         :param tag: Tag for the entry
+        :param date: Date for the entry
         :param comment: Comment for the entry
         """
         try:
@@ -106,10 +108,10 @@ class DB:
             cursor.execute(command, (chat_id, tag,))
             tag_id = cursor.fetchone()[0]
             command = '''
-                INSERT INTO Entry (Tag, Value, Comment)
-                VALUES (?, ?, ?)
+                INSERT INTO Entry (Tag, Value, Date, Comment)
+                VALUES (?, ?, ?, ?)
                 '''
-            cursor.execute(command, (tag_id, value, comment))
+            cursor.execute(command, (tag_id, value, date, comment))
             self.conn.commit()
         except BaseException as e:
             raise e
