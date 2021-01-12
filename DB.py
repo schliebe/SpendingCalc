@@ -115,3 +115,52 @@ class DB:
             self.conn.commit()
         except BaseException as e:
             raise e
+
+    def get_entry_sum(self, chat_id, tag=None, time_period=None):
+        """Returns the sum of the selected values
+
+        Computes the sum of all values if neither tag or time_period are
+        specified.
+        If the time period is specified only those results will be considered.
+        If the tag is specified only these entries will be considered. If not
+        the result of all tags will be computed.
+
+        :param chat_id: Telegram chat_id of the user
+        :param tag: Tag for the results
+        :param time_period: Time period for the results
+        """
+        where = 'WHERE Tags.ChatID = ?'
+        param = (chat_id,)
+        if tag:
+            where += ' AND Tags.Tag = ?'
+            param = param + (tag,)
+        if time_period:
+            if time_period != 'all':
+                # Entsprechende SQlite Modifikatioren einfügen
+                # https://sqlite.org/lang_datefunc.html
+                if time_period == '7day':
+                    modifier = '-7 day'
+                elif time_period == '30day':
+                    modifier = '-30 day'
+                elif time_period == 'month':
+                    modifier = 'start of month'
+                elif time_period == 'year':
+                    modifier = 'start of year'
+
+                where += ' AND date(Date) >= date("now", ?)'
+                param = param + (modifier,)
+        try:
+            cursor = self.conn.cursor()
+            command = '''
+                SELECT Tags.Tag, SUM(Value)
+                FROM Entry
+                JOIN Tags
+                ON Entry.Tag = T_ID
+                {}
+                GROUP BY Entry.Tag
+                '''.format(where)
+            cursor.execute(command, param)
+            res = cursor.fetchall()
+            return res
+        except BaseException as e:
+            raise e

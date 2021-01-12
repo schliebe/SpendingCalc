@@ -10,6 +10,8 @@ ENTER = 10
 ENTER_VALUE = 11
 ENTER_TAG = 12
 ENTER_COMMENT = 13
+ANALYSIS = 20
+ANALYSIS_TIME = 21
 
 # Verbindung zur Datenbank
 db = None
@@ -40,15 +42,23 @@ def register_handlers(dispatcher):
     main_menu_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
-            MAIN: [MessageHandler(Filters.regex('^(Eintragen)$'), enter_menu)],
+            MAIN: [MessageHandler(Filters.regex('^(Eintragen)$'), enter_menu),
+                   MessageHandler(Filters.regex('^(Analyse)$'), analysis_menu)],
             ENTER: [MessageHandler(Filters.regex(r'^-?\d+((\.|,)\d{1,2})?€?$'),
                                    enter_value),
                     MessageHandler(Filters.text, invalid)],
             ENTER_VALUE: [MessageHandler(Filters.text, enter_tag)],
             ENTER_TAG: [MessageHandler(Filters.regex('^(Nein & Speichern)$'),
                                        enter_save),
-                        MessageHandler(Filters.regex('^(Ja)$'), enter_comment)],
+                        MessageHandler(Filters.regex('^(Ja)$'), enter_comment),
+                        MessageHandler(Filters.text, invalid)],
             ENTER_COMMENT: [MessageHandler(Filters.text, enter_save)],
+            ANALYSIS: [MessageHandler(Filters.regex('^(Zurück)$'), back),
+                       MessageHandler(Filters.regex(
+                           '^(7 Tage|30 Tage|Diesen Monat|Dieses Jahr|Alle)$'),
+                           analysis_time),
+                       MessageHandler(Filters.text, invalid)],
+            ANALYSIS_TIME: [MessageHandler(Filters.text, analysis_tag)]
         },
         fallbacks=[],
     )
@@ -75,7 +85,8 @@ def main_menu(update, context):
     :param context: Context of the sent message
     :return: Status for main menu
     """
-    keyboard = [['Eintragen']]
+    keyboard = [['Eintragen'],
+                ['Analyse']]
 
     update.message.reply_text(
         'Was möchtest du machen?',
@@ -153,6 +164,9 @@ def enter_tag(update, context):
 
     # Überprüfen, ob Tag erst angelegt werden muss
     if tag not in data[chat_id]['tags']:
+        # Der Tag 'Alle' ist ungültig (und macht auch keinen Sinn)
+        if tag == 'Alle':
+            return invalid(update, context)
         db.add_tag(chat_id, tag)
 
     keyboard = [['Ja'], ['Nein & Speichern']]
@@ -210,6 +224,111 @@ def enter_save(update, context):
     data.pop(chat_id, None)
 
     update.message.reply_text('Erfolgreich eingetragen!')
+    return main_menu(update, context)
+
+
+def analysis_menu(update, context):
+    """Handling the analysis menu
+
+    :param update: Update of the sent message
+    :param context: Context of the sent message
+    :return: Status for analysis menu
+    """
+    keyboard = [['7 Tage', '30 Tage'],
+                ['Diesen Monat', 'Dieses Jahr'],
+                ['Alle'],
+                ['Zurück']]
+
+    update.message.reply_text(
+        'Welchen Zeitraum möchtest du betrachten?',
+        reply_markup=ReplyKeyboardMarkup(keyboard)
+    )
+    return ANALYSIS
+
+
+def analysis_time(update, context):
+    """Handling the selected time period
+
+    The possible time periods:  Saved as:
+    The last 7 days             7day
+    The last 30 days            30day
+    This month                  month
+    This year                   year
+    All time                    all
+
+    :param update: Update of the sent message
+    :param context: Context of the sent message
+    :return: Status for time period selection
+    """
+    chat_id = update.effective_chat.id
+    message = update.message.text
+
+    data[chat_id] = {}
+
+    # Zeitfenster anhand der gewählten Antwort auswählen
+    # Weitere Nachrichten sind wegen Regex nicht möglich -> Kein else nötig
+    if message == '7 Tage':
+        data[chat_id]['period'] = '7day'
+    elif message == '30 Tage':
+        data[chat_id]['period'] = '30day'
+    elif message == 'Diesen Monat':
+        data[chat_id]['period'] = 'month'
+    elif message == 'Dieses Jahr':
+        data[chat_id]['period'] = 'year'
+    elif message == 'Alle':
+        data[chat_id]['period'] = 'all'
+
+    # Tags laden und als Keyboard anzeigen
+    tags = db.get_tags(chat_id)
+    data[chat_id]['tags'] = tags
+    keyboard = [['Alle']]
+    for tag in tags:
+        keyboard.append([tag])
+
+    update.message.reply_text(
+        'Welche Kategorie möchtest du betrachten?',
+        reply_markup=ReplyKeyboardMarkup(keyboard)
+    )
+    return ANALYSIS_TIME
+
+
+def analysis_tag(update, context):
+    """Handling the selected tag
+
+    :param update: Update of the sent message
+    :param context: Context of the sent message
+    :return: Status for tag selection
+    """
+    chat_id = update.effective_chat.id
+    message = update.message.text
+
+    tag = message.strip()
+    time_period = data[chat_id]['period']
+
+    # Überprüfen, ob ausgewählter Tag existiert, oder 'Alle' ist
+    if tag == 'Alle':
+        result = db.get_entry_sum(chat_id, time_period=time_period)
+    elif tag in data[chat_id]['tags']:
+        result = db.get_entry_sum(chat_id, tag=tag, time_period=time_period)
+    else:
+        return invalid(update, context)
+
+    answer = ''
+    for tag in result:
+        answer += '{}: {:.2f}€\n'.format(tag[0], tag[1])
+
+    update.message.reply_text(answer)
+
+    return main_menu(update, context)
+
+
+def back(update, context):
+    """Returns the user back to the main menu
+
+    :param update: Update of the sent message
+    :param context: Context of the sent message
+    :return: Status for main menu
+    """
     return main_menu(update, context)
 
 
