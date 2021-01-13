@@ -12,6 +12,7 @@ ENTER_TAG = 12
 ENTER_COMMENT = 13
 ANALYSIS = 20
 ANALYSIS_TIME = 21
+ANALYSIS_TAG = 22
 
 # Verbindung zur Datenbank
 db = None
@@ -58,7 +59,11 @@ def register_handlers(dispatcher):
                            '^(7 Tage|30 Tage|Diesen Monat|Dieses Jahr|Alle)$'),
                            analysis_time),
                        MessageHandler(Filters.text, invalid)],
-            ANALYSIS_TIME: [MessageHandler(Filters.text, analysis_tag)]
+            ANALYSIS_TIME: [MessageHandler(Filters.text, analysis_tag)],
+            ANALYSIS_TAG: [MessageHandler(Filters.regex('^(Zurück)$'), back),
+                           MessageHandler(Filters.regex(
+                               '^(Einträge anzeigen)$'), analysis_show),
+                           MessageHandler(Filters.text, invalid)]
         },
         fallbacks=[],
     )
@@ -302,10 +307,11 @@ def analysis_tag(update, context):
     chat_id = update.effective_chat.id
     message = update.message.text
 
-    tag = message.strip()
+    tag = data[chat_id]['tag'] = message.strip()
     time_period = data[chat_id]['period']
 
     # Überprüfen, ob ausgewählter Tag existiert, oder 'Alle' ist
+    # Ergebnisse aus Datenbank laden
     if tag == 'Alle':
         result = db.get_entry_sum(chat_id, time_period=time_period)
     elif tag in data[chat_id]['tags']:
@@ -313,11 +319,58 @@ def analysis_tag(update, context):
     else:
         return invalid(update, context)
 
-    answer = ''
+    # Antwort-Nachricht erstellen
+    answer = 'Gesamtsumme:\n'
     for tag in result:
         answer += '{}: {:.2f}€\n'.format(tag[0], tag[1])
 
+    answer += '\nMöchtest du die Einträge anzeigen lassen?'
+
+    keyboard = [['Einträge anzeigen'],
+                ['Zurück']]
+
+    update.message.reply_text(
+        answer,
+        reply_markup=ReplyKeyboardMarkup(keyboard)
+    )
+    return ANALYSIS_TAG
+
+
+def analysis_show(update, context):
+    """Sending all selected entries
+
+    :param update: Update of the sent message
+    :param context: Context of the sent message
+    :return: Status for shown entries
+    """
+    chat_id = update.effective_chat.id
+    time_period = data[chat_id]['period']
+    tag = data[chat_id]['tag']
+
+    # Einträge je nach Auswahl aus der Datenbank laden
+    if tag == 'Alle':
+        result = db.get_entries(chat_id, time_period=time_period)
+    elif tag in data[chat_id]['tags']:
+        result = db.get_entries(chat_id, tag=tag, time_period=time_period)
+    else:
+        return invalid(update, context)
+
+    answer = ''
+    for i in range(len(result)):
+        entry = result[i]
+        y, m, d = entry[2].split('-')
+        date = '{}.{}.{}'.format(int(d), int(m), int(y))
+        if entry[3]:
+            answer += '({}) {:.2f}€ - {}\n{}: {}\n\n'.format(
+                i + 1, entry[0], date, entry[1], entry[3])
+        else:
+            answer += '({}) {:.2f}€ - {}\n{}\n\n'.format(
+                i + 1, entry[0], date, entry[1])
+
     update.message.reply_text(answer)
+
+    # Zwischengespeicherte Daten löschen
+    data.pop(chat_id, None)
 
     return main_menu(update, context)
 
@@ -329,6 +382,11 @@ def back(update, context):
     :param context: Context of the sent message
     :return: Status for main menu
     """
+
+    # Zwischengespeicherte Daten löschen
+    chat_id = update.effective_chat.id
+    data.pop(chat_id, None)
+
     return main_menu(update, context)
 
 
