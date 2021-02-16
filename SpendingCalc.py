@@ -309,21 +309,27 @@ def analysis_tag(update, context):
 
     tag = data[chat_id]['tag'] = message.strip()
     time_period = data[chat_id]['period']
+    show_total = False
 
     # Überprüfen, ob ausgewählter Tag existiert, oder 'Alle' ist
     # Ergebnisse aus Datenbank laden
     if tag == 'Alle':
         result = db.get_entry_sum(chat_id, time_period=time_period)
+        show_total = True
     elif tag in data[chat_id]['tags']:
         result = db.get_entry_sum(chat_id, tag=tag, time_period=time_period)
     else:
         return invalid(update, context)
 
     # Antwort-Nachricht erstellen
-    answer = 'Gesamtsumme:\n'
+    answer = ''
+    total = 0
     for tag in result:
         answer += '{}: {:.2f}€\n'.format(tag[0], tag[1])
+        total += float(tag[1])
 
+    if show_total:
+        answer += 'Gesamt: {:.2f}€\n'.format(total)
     answer += '\nMöchtest du die Einträge anzeigen lassen?'
 
     keyboard = [['Einträge anzeigen'],
