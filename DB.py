@@ -200,7 +200,7 @@ class DB:
         try:
             cursor = self.conn.cursor()
             command = '''
-                SELECT Value, Tags.Tag, Date, Comment
+                SELECT E_ID, Value, Tags.Tag, Date, Comment
                 FROM Entry
                 JOIN Tags
                 ON Entry.Tag = T_ID
@@ -210,5 +210,42 @@ class DB:
             cursor.execute(command, param)
             res = cursor.fetchall()
             return res
+        except BaseException as e:
+            raise e
+
+    def update_entry(self, entry):
+        """Update the given entry
+
+        The entry has to be a tuple in this form:
+        (e_id, value, tag, date, comment)
+
+        :param entry: The values of the entry to be updated
+        """
+        e_id, value, tag, date, comment = entry
+        try:
+            cursor = self.conn.cursor()
+            command = '''
+                UPDATE Entry
+                SET Value = ?, Date = ?, Comment = ?
+                WHERE E_ID = ?
+                '''
+            cursor.execute(command, (value, date, comment, e_id))
+            self.conn.commit()
+        except BaseException as e:
+            raise e
+
+    def remove_entry(self, e_id):
+        """Delete the given entry
+
+        :param e_id: The id of the entry to be deleted
+        """
+        try:
+            cursor = self.conn.cursor()
+            command = '''
+                DELETE FROM Entry
+                WHERE E_ID = ?
+                '''
+            cursor.execute(command, (e_id,))
+            self.conn.commit()
         except BaseException as e:
             raise e
