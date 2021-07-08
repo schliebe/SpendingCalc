@@ -9,7 +9,8 @@ MAIN = 0
 ENTER = 10
 ENTER_VALUE = 11
 ENTER_TAG = 12
-ENTER_COMMENT = 13
+ENTER_DATE = 13
+ENTER_COMMENT = 14
 ANALYSIS = 20
 ANALYSIS_TIME = 21
 ANALYSIS_TAG = 22
@@ -57,10 +58,11 @@ def register_handlers(dispatcher):
                                    enter_value),
                     MessageHandler(Filters.text, invalid)],
             ENTER_VALUE: [MessageHandler(Filters.text, enter_tag)],
-            ENTER_TAG: [MessageHandler(Filters.regex('^(Nein & Speichern)$'),
-                                       enter_save),
-                        MessageHandler(Filters.regex('^(Ja)$'), enter_comment),
-                        MessageHandler(Filters.text, invalid)],
+            ENTER_TAG: [MessageHandler(Filters.text, enter_date)],
+            ENTER_DATE: [MessageHandler(Filters.regex('^(Nein & Speichern)$'),
+                                        enter_save),
+                         MessageHandler(Filters.regex('^(Ja)$'), enter_comment),
+                         MessageHandler(Filters.text, invalid)],
             ENTER_COMMENT: [MessageHandler(Filters.text, enter_save)],
             ANALYSIS: [MessageHandler(Filters.regex('^(Zurück)$'), back),
                        MessageHandler(Filters.regex(
@@ -208,14 +210,51 @@ def enter_tag(update, context):
             return invalid(update, context)
         db.add_tag(chat_id, tag)
 
-    keyboard = [['Ja'], ['Nein & Speichern']]
+    keyboard = [['Heute'], ['Gestern']]
 
     update.message.reply_text(
-        'Betrag: {:.2f}€\nTag: {}\n\nSoll ein Kommentar hinzugefügt werden?'
+        ('Betrag: {:.2f}€\nTag: {}\n\nFür welches Datum? '
+         '(Bitte eingeben oder auswählen)')
         .format(data[chat_id]['value'], tag),
         reply_markup=ReplyKeyboardMarkup(keyboard)
     )
     return ENTER_TAG
+
+
+def enter_date(update, context):
+    """Handling the entered date
+
+    :param update: Update of the sent message
+    :param context: Context of the sent message
+    :return: Status for date entry
+    """
+    chat_id = update.effective_chat.id
+    message = update.message.text
+
+    if message == 'Heute':
+        date = datetime.date.today()
+        y, m, d = date.year, date.month, date.day
+    elif message == 'Gestern':
+        date = datetime.date.today() - datetime.timedelta(days=1)
+        y, m, d = date.year, date.month, date.day
+    else:
+        # Eingabe überprüfen und in richtige Form umwandeln
+        date, date_values = convert_date(message)
+        # Bei ungültiger Eingabe abbrechen
+        if not date or not date_values:
+            return invalid(update, context)
+        y, m, d = date_values
+
+    data[chat_id]['date'] = date
+
+    keyboard = [['Ja'], ['Nein & Speichern']]
+
+    update.message.reply_text(
+        'Datum: {:02d}.{:02d}.{:04d}\n\nSoll ein Kommentar hinzugefügt werden?'
+        .format(d, m, y),
+        reply_markup=ReplyKeyboardMarkup(keyboard)
+    )
+    return ENTER_DATE
 
 
 def enter_comment(update, context):
@@ -249,7 +288,7 @@ def enter_save(update, context):
 
     value = data[chat_id]['value']
     tag = data[chat_id]['tag']
-    date = datetime.date.today()
+    date = data[chat_id]['date']
     comment = data[chat_id]['comment']
 
     # Kommentar hinzufügen, wenn dieser nicht übersprungen wurde
@@ -564,32 +603,12 @@ def analysis_edit_date(update, context):
     message = update.message.text
     entry = data[chat_id]['entry']
 
-    try:
-        date = message.strip().replace('.', '-').replace(' ', '-')
-        # Wenn Jahr nicht angegeben, aber Punkt am Ende
-        if date[-1] == '-':
-            date = date[:-1]
-        # Wenn nur Tag und Monat angegeben
-        if date.count('-') == 1:
-            d, m = date.split('-')
-            d, m = int(d), int(m)
-            y = datetime.date.today().year
-            # Wenn Datum in Zukunft, letztes Jahr eintragen
-            if datetime.date(y, m, d) > datetime.date.today():
-                y -= 1
-        # Wenn auch Jahr angegeben
-        else:
-            d, m, y = date.split('-')
-            if len(y) == 2:
-                y = '20' + y
-        d, m, y = int(d), int(m), int(y)
-        date = '{:04d}-{:02d}-{:02d}'.format(y, m, d)
-
-        # Überprüfen, ob Datum gültig und nicht in Zukunft
-        if datetime.date(y, m, d) > datetime.date.today():
-            return invalid(update, context)
-    except BaseException:
+    # Eingabe überprüfen und in richtige Form umwandeln
+    date, date_values = convert_date(message)
+    # Bei ungültiger Eingabe abbrechen
+    if not date or not date_values:
         return invalid(update, context)
+    y, m, d = date_values
 
     data[chat_id]['entry'] = (entry[0], entry[1], entry[2], date, entry[4])
 
@@ -692,6 +711,44 @@ def invalid(update, context):
     """
     update.message.reply_text(
         'Ungültige Eingabe, bitte nochmal versuchen!')
+
+
+def convert_date(input_string):
+    """Takes input and converts to correct date format.
+    If an invalid or future date is entered, None will be returned
+
+    :param input_string: String with the date to be converted
+    :return: Date string for the database and a tuple with (year, month, day) or
+    None, None if the input is invalid
+    """
+    try:
+        date = input_string.strip().replace('.', '-').replace(' ', '-')
+        # Wenn Jahr nicht angegeben, aber Punkt am Ende
+        if date[-1] == '-':
+            date = date[:-1]
+        # Wenn nur Tag und Monat angegeben
+        if date.count('-') == 1:
+            d, m = date.split('-')
+            d, m = int(d), int(m)
+            y = datetime.date.today().year
+            # Wenn Datum in Zukunft, letztes Jahr eintragen
+            if datetime.date(y, m, d) > datetime.date.today():
+                y -= 1
+        # Wenn auch Jahr angegeben
+        else:
+            d, m, y = date.split('-')
+            if len(y) == 2:
+                y = '20' + y
+        d, m, y = int(d), int(m), int(y)
+        date = '{:04d}-{:02d}-{:02d}'.format(y, m, d)
+
+        # Überprüfen, ob Datum gültig und nicht in Zukunft
+        if datetime.date(y, m, d) > datetime.date.today():
+            return None, None
+        else:
+            return date, (y, m, d)
+    except BaseException:
+        return None, None
 
 
 def main():
