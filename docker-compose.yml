@@ -1,0 +1,9 @@
+version: "3"
+
+services:
+  spendingcalc:
+    build: ./SpendingCalc
+    container_name: spendingcalc
+    restart: always
+    volumes:
+      - "./SpendingCalcData.db:/usr/src/app/SpendingCalcData.db"
